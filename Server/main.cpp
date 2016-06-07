@@ -13,13 +13,13 @@ COLORREF bkColor = RGB(33, 33, 33); // grey
 int wndWidth = 320;
 int wndHight = 240;
 
-typedef struct _BACKDOOR_PACKET
+typedef struct PACKET
 {
 	BYTE Operation;
 	char Buffer[1024];
-}BACKDOOR_PACKET, *PBACKDOOR_PACKET;
+}BACKDOOR_PACKET, *PPACKET;
 
-#define BACKDOOR_DISPLAY_MESSAGE 8
+#define DISPLAY_MESSAGE 8
 
 char *serverCallback(void *params)
 {
@@ -27,10 +27,10 @@ char *serverCallback(void *params)
 
 	char *response = (char *)VirtualAlloc(NULL, 64, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
-	switch (((PBACKDOOR_PACKET)params)->Operation)
+	switch (((PACKET)params)->Operation)
 	{
-		case BACKDOOR_DISPLAY_MESSAGE:
-			MessageBox(NULL, ((PBACKDOOR_PACKET)params)->Buffer, NULL, MB_OK);
+		case DISPLAY_MESSAGE:
+			MessageBox(NULL, ((PPACKET)params)->Buffer, NULL, MB_OK);
 			strcat(response, "A message has ben displayed!");
 			break;
 
