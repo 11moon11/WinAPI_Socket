@@ -1,10 +1,14 @@
 #pragma once
 #define WIN32_LEAN_AND_MEAN
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 
+#include <mutex>
+#include <thread>
+#include <vector>
 #include <stdio.h>
 #include <tchar.h>
 #include <Windows.h>
-#include <WinSock.h>
+#include <WinSock2.h>
 
 #pragma comment(lib,"ws2_32.lib")
 
@@ -17,21 +21,29 @@ public:
 	sockServer(int port, char *(*callback)(void*));
 	bool sockSetup();
 	void sockStart();
+	void sockStop();
 
 	~sockServer();
 
 private:
-	DWORD WINAPI serverThread();
+	void serverThread();
+	void messageMonitor();
+
+	std::thread clientThread;
+	std::thread servThread;
+	std::mutex mutexLock;
+
+	SOCKET clientSock[MAX_CONNECTIONS];
+	SOCKET listenSock;
+	int connections;
+	void *recData;
+	void *senData;
 
 	char *(*callback)(void*);
 	TCHAR errMsg[100];
-	SOCKET listenSock;
-	SOCKET clientSock;
 	int iSendResult;
 	sockaddr_in sai;
 	HANDLE hMutex;
-	void *recData;
-	void *senData;
 	int iResult;
 	bool active;
 	WSADATA wd;

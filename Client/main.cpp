@@ -6,26 +6,22 @@
 
 #include "sockClient.h"
 
-typedef struct PACKET
+typedef struct _PACKET
 {
 	BYTE Operation;
 	char Buffer[1024];
-}BACKDOOR_PACKET, *PPACKET;
+}PACKET, *PPACKET;
 
-#define DISPLAY_MESSAGE 8
+#define MESSAGE 8
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int main()
 {
-	AllocConsole();
-	freopen("CON", "wt", stdout);
-	freopen("CON", "wt", stderr);
-
 	PACKET data;
 	char *addr = "127.0.0.1";
 	memset(&data, 0, sizeof(data));
 
-	strcat(data.Buffer, "Hello form client!");
-	data.Operation = DISPLAY_MESSAGE;
+	strcat(data.Buffer, "Fuck this Shit!");
+	data.Operation = MESSAGE;
 
 	sockClient sc(addr, 65533);
 	if (sc.sockSetup())
@@ -34,5 +30,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	}
 
 	printf("^_^\n");
+
+	system("pause");
 	return 0;
 }

@@ -3,6 +3,7 @@
 sockServer::sockServer(int port, char *(*callback)(void*))
 {
 	active = false;
+	connections = 0;
 	this->port = port;
 	this->callback = callback;
 }
@@ -16,7 +17,8 @@ bool sockServer::sockSetup()
 	if (GetLastError() == ERROR_ALREADY_EXISTS)
 	{
 		// One instance of our mutex already exists - exiting
-		_sntprintf_s(errMsg, sizeof(errMsg), "CreateMutex failed with error: %d", GetLastError());
+		printf("CreateMutex failed with error: %d\n", GetLastError());
+		printf("Server is already running!\n");
 
 		return false;
 	}
@@ -45,7 +47,7 @@ bool sockServer::sockSetup()
 	if (listenSock == INVALID_SOCKET)
 	{
 		// Error occurred wile staring socket - exiting
-		_sntprintf_s(errMsg, sizeof(errMsg), "Socket failed with error: %ld", WSAGetLastError());
+		printf("Socket failed with error: %ld\n", WSAGetLastError());
 
 		WSACleanup();
 		return false;
@@ -67,7 +69,7 @@ void sockServer::sockStart()
 	{
 		printf("Starting server thread...\n");
 		active = true;
-		serverThread();
+		servThread = std::thread(&sockServer::serverThread, this);
 	}
 	else
 	{
@@ -75,55 +77,108 @@ void sockServer::sockStart()
 	}
 }
 
-DWORD WINAPI sockServer::serverThread()
+void sockServer::sockStop()
+{
+	if (active)
+	{
+		printf("Stopping server...\n");
+
+		active = false;
+
+		closesocket(listenSock);
+
+		servThread.join();
+		clientThread.join();
+
+		printf("Server is stopped!\n");
+	}
+	else
+	{
+		printf("Server thread is not active!\n");
+	}
+}
+
+void sockServer::serverThread()
 {
 	printf("Server thread is now active!\n");
+
+	clientThread = std::thread(&sockServer::messageMonitor, this);
 
 	for (; active == true; Sleep(10))
 	{
 		printf("Waiting for a client to connect...\n");
-		clientSock = accept(listenSock, NULL, NULL);
-		printf("Client has connected!\n");
+		clientSock[connections] = accept(listenSock, NULL, NULL);
 
-		if (clientSock == INVALID_SOCKET)
+		if (active)
+			printf("Client #%d has connected!\n", connections);
+
+		if (clientSock[connections] == INVALID_SOCKET)
 		{
-			_sntprintf_s(errMsg, sizeof(errMsg), "Accept failed with error: %d", WSAGetLastError());
+			printf("Accept failed with error: %d\n", WSAGetLastError());
 
+			shutdown(clientSock[connections], SD_BOTH);
 			closesocket(listenSock);
 			WSACleanup();
+		}
+
+		mutexLock.lock();
+		connections++;
+		mutexLock.unlock();
+
+		// When max limit of clients is reached - exit this loop
+		if (connections == MAX_CONNECTIONS)
+		{
 			break;
 		}
+	}
+}
 
-		iResult = recv(clientSock, reinterpret_cast<char *>(recData), DEFAULT_BUFLEN, 0);
-
-		if (iResult > 0)
+void sockServer::messageMonitor()
+{
+	for (; active == true; Sleep(10))
+	{
+		for (int i = 0; i < connections; i++)
 		{
-			printf("Bytes received: %d\n", iResult);
+			mutexLock.lock();
+			iResult = recv(clientSock[i], reinterpret_cast<char *>(recData), DEFAULT_BUFLEN, 0);
 
-			senData = callback(recData);
-			
-			iSendResult = send(clientSock, reinterpret_cast<char *>(senData), strlen(reinterpret_cast<char *>(senData)), 0);
-
-			if (iSendResult == SOCKET_ERROR)
+			if (iResult > 0)
 			{
-				printf("Send failed with error: %d\n", WSAGetLastError());
-				closesocket(clientSock);
-				WSACleanup();
-				break;
+				printf("Bytes received: %d from client #%d\n", iResult, i);
+
+				senData = callback(recData);
+
+				iSendResult = send(clientSock[i], reinterpret_cast<char *>(senData), strlen(reinterpret_cast<char *>(senData)), 0);
+
+				if (iSendResult == SOCKET_ERROR)
+				{
+					printf("Send to client #%d failed with error: %d\n", i, WSAGetLastError());
+					printf("Closing connection #%d\n", i);
+
+					shutdown(clientSock[i], SD_SEND);
+					closesocket(clientSock[i]);
+				}
+
+				printf("Bytes sent: %d\n", iSendResult);
 			}
 
-			printf("Bytes sent: %d\n", iSendResult);
-		}
-		else if (iResult < 0)
-			printf("recv failed with error: %d\n", WSAGetLastError());
+			VirtualFree(senData, 128, MEM_FREE);
+			memset(recData, 0, sizeof(void*));
+			memset(senData, 0, sizeof(void*));
 
-		VirtualFree(senData, 128, MEM_FREE);
-		memset(recData, 0, sizeof(void*));
-		memset(senData, 0, sizeof(void*));
+			mutexLock.unlock();
+		}
 	}
 
-	active = false;
-	return 0;
+	mutexLock.lock();
+	for (int i = 0; i < connections; i++)
+	{
+		printf("Closing connection #%d\n", i);
+		shutdown(clientSock[i], SD_SEND);
+		closesocket(clientSock[i]);
+	}
+	mutexLock.unlock();
+	WSACleanup();
 }
 
 sockServer::~sockServer()
